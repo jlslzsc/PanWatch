@@ -1088,8 +1088,17 @@ export default function StockInsightModal(props: {
         bypass_throttle: true,
         bypass_market_hours: true,
       })
-      toast('已设置提醒并触发一次盘中监测', 'success')
-      await Promise.allSettled([loadSuggestions()])
+      toast('已设置提醒，AI 分析已提交', 'success')
+      // 轮询等待建议生成（最多 2 分钟，每 5 秒一次）
+      const before = Date.now()
+      const poll = setInterval(async () => {
+        if (Date.now() - before > 120_000) { clearInterval(poll); setAlerting(false); return }
+        await loadSuggestions()
+      }, 5_000)
+      await loadSuggestions()
+      // 延迟清理：2 分钟后 interval 自动停止
+      setTimeout(() => clearInterval(poll), 125_000)
+      return
     } catch (e) {
       toast(e instanceof Error ? e.message : '设置提醒失败', 'error')
     } finally {
@@ -1125,7 +1134,7 @@ export default function StockInsightModal(props: {
   }, [hasHolding, market, resolvedName, symbol, toast, watchingStock])
 
   const triggerAutoAiSuggestion = useCallback(async () => {
-    // 自动建议仅针对“确认未持仓”的股票，且不自动创建股票/绑定 Agent。
+    // 自动建议仅针对”确认未持仓”的股票，且不自动创建股票/绑定 Agent。
     if (!symbol || !market || !holdingLoaded || holdingLoadError || hasHolding || autoSuggesting) return
     const key = `${market}:${symbol}`
     const lastTs = autoTriggeredRef.current[key] || 0
@@ -1142,13 +1151,20 @@ export default function StockInsightModal(props: {
         bypass_throttle: true,
         bypass_market_hours: true,
       })
-      await Promise.allSettled([loadSuggestions()])
+      // 异步模式：triggerAgent 立即返回，轮询等待建议生成
+      const before = Date.now()
+      const poll = setInterval(async () => {
+        if (Date.now() - before > 120_000) { clearInterval(poll); setAutoSuggesting(false); return }
+        await loadSuggestions()
+      }, 5_000)
+      await loadSuggestions()
+      setTimeout(() => clearInterval(poll), 125_000)
+      return
     } catch (e) {
       toast(
         e instanceof Error ? e.message : '自动 AI 建议触发失败，可点击「一键设提醒」重试',
         'error'
       )
-    } finally {
       setAutoSuggesting(false)
     }
   }, [symbol, market, resolvedName, holdingLoaded, holdingLoadError, hasHolding, autoSuggesting, loadSuggestions, toast])
