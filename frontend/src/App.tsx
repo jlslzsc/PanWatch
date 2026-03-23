@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, LogOut, Github, BellRing, MoreHorizontal, Sparkles } from 'lucide-react'
+import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, LogOut, Github, BellRing, MoreHorizontal, Sparkles, Activity } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated, logout } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
@@ -11,6 +11,7 @@ import SettingsPage from '@/pages/Settings'
 import DataSourcesPage from '@/pages/DataSources'
 import HistoryPage from '@/pages/History'
 import PriceAlertsPage from '@/pages/PriceAlerts'
+import PaperTradingPage from '@/pages/PaperTrading'
 import LoginPage from '@/pages/Login'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
@@ -22,15 +23,16 @@ const navItems = [
   { to: '/portfolio', icon: List, label: '持仓' },
   { to: '/opportunities', icon: Sparkles, label: '机会' },
   { to: '/alerts', icon: BellRing, label: '提醒' },
+  { to: '/paper-trading', icon: Activity, label: '模拟盘' },
   { to: '/agents', icon: Bot, label: 'Agent' },
   { to: '/history', icon: Clock, label: '历史' },
   { to: '/datasources', icon: Database, label: '数据源' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
 const desktopPrimaryNavItems = [navItems[0], navItems[1], navItems[2], navItems[3]]
-const desktopMoreNavItems = [navItems[4], navItems[5], navItems[6], navItems[7]]
+const desktopMoreNavItems = [navItems[4], navItems[5], navItems[6], navItems[7], navItems[8]]
 const mobilePrimaryNavItems = [navItems[0], navItems[1], navItems[2], navItems[3]]
-const mobileMoreNavItems = [navItems[4], navItems[5], navItems[6], navItems[7]]
+const mobileMoreNavItems = [navItems[4], navItems[5], navItems[6], navItems[7], navItems[8]]
 
 // 认证守卫组件
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -350,6 +352,7 @@ function App() {
           <Route path="/portfolio" element={<StocksPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/alerts" element={<PriceAlertsPage />} />
           <Route path="/datasources" element={<DataSourcesPage />} />
           <Route path="/settings" element={<SettingsPage />} />

@@ -919,3 +919,79 @@ class PriceAlertHit(Base):
 
     rule = relationship("PriceAlertRule")
     stock = relationship("Stock")
+
+
+class PaperTradingAccount(Base):
+    """模拟盘账户（单例）"""
+
+    __tablename__ = "paper_trading_account"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    initial_capital = Column(Float, nullable=False, default=1000000.0)
+    current_capital = Column(Float, nullable=False, default=1000000.0)
+    total_pnl = Column(Float, nullable=False, default=0.0)
+    total_trades = Column(Integer, nullable=False, default=0)
+    winning_trades = Column(Integer, nullable=False, default=0)
+    max_drawdown_pct = Column(Float, nullable=False, default=0.0)
+    peak_capital = Column(Float, nullable=False, default=1000000.0)
+    enabled = Column(Boolean, default=True)
+    excluded_markets = Column(JSON, default=[])  # 排除的市场，如 ["US"]
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PaperTradingPosition(Base):
+    """模拟盘持仓"""
+
+    __tablename__ = "paper_trading_positions"
+    __table_args__ = (
+        Index("ix_paper_pos_status", "status"),
+        Index("ix_paper_pos_symbol_market", "stock_symbol", "stock_market"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_symbol = Column(String, nullable=False)
+    stock_market = Column(String, nullable=False, default="CN")
+    stock_name = Column(String, default="")
+    quantity = Column(Integer, nullable=False, default=100)
+    entry_price = Column(Float, nullable=False)
+    stop_loss = Column(Float, nullable=True)
+    target_price = Column(Float, nullable=True)
+    current_price = Column(Float, nullable=True)
+    unrealized_pnl = Column(Float, nullable=False, default=0.0)
+    status = Column(String, nullable=False, default="open")  # open/closed
+    signal_run_id = Column(Integer, nullable=True)
+    signal_snapshot_date = Column(String, default="")
+    signal_action = Column(String, default="")
+    strategy_code = Column(String, default="")
+    opened_at = Column(DateTime, server_default=func.now())
+    closed_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PaperTradingTrade(Base):
+    """模拟盘已平仓记录"""
+
+    __tablename__ = "paper_trading_trades"
+    __table_args__ = (
+        Index("ix_paper_trade_closed", "closed_at"),
+        Index("ix_paper_trade_symbol", "stock_symbol", "stock_market"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_symbol = Column(String, nullable=False)
+    stock_market = Column(String, nullable=False, default="CN")
+    stock_name = Column(String, default="")
+    quantity = Column(Integer, nullable=False, default=100)
+    entry_price = Column(Float, nullable=False)
+    exit_price = Column(Float, nullable=False)
+    pnl = Column(Float, nullable=False, default=0.0)
+    pnl_pct = Column(Float, nullable=False, default=0.0)
+    exit_reason = Column(String, nullable=False, default="")  # stop_loss/target_price/signal_reversal/manual
+    signal_run_id = Column(Integer, nullable=True)
+    signal_snapshot_date = Column(String, default="")
+    strategy_code = Column(String, default="")
+    holding_days = Column(Integer, default=0)
+    opened_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, server_default=func.now())
+    meta = Column(JSON, default={})

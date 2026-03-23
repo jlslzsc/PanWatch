@@ -1394,6 +1394,97 @@ WHERE source_pool = 'market_scan'
         )
 
 
+def _m114_paper_trading_tables(conn: Connection) -> None:
+    """创建模拟盘三张表。"""
+    if not _has_table(conn, "paper_trading_account"):
+        conn.execute(
+            text(
+                """
+CREATE TABLE paper_trading_account (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    initial_capital REAL NOT NULL DEFAULT 1000000.0,
+    current_capital REAL NOT NULL DEFAULT 1000000.0,
+    total_pnl REAL NOT NULL DEFAULT 0.0,
+    total_trades INTEGER NOT NULL DEFAULT 0,
+    winning_trades INTEGER NOT NULL DEFAULT 0,
+    max_drawdown_pct REAL NOT NULL DEFAULT 0.0,
+    peak_capital REAL NOT NULL DEFAULT 1000000.0,
+    enabled BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+            )
+        )
+    if not _has_table(conn, "paper_trading_positions"):
+        conn.execute(
+            text(
+                """
+CREATE TABLE paper_trading_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_symbol TEXT NOT NULL,
+    stock_market TEXT NOT NULL DEFAULT 'CN',
+    stock_name TEXT DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 100,
+    entry_price REAL NOT NULL,
+    stop_loss REAL,
+    target_price REAL,
+    current_price REAL,
+    unrealized_pnl REAL NOT NULL DEFAULT 0.0,
+    status TEXT NOT NULL DEFAULT 'open',
+    signal_run_id INTEGER,
+    signal_snapshot_date TEXT DEFAULT '',
+    signal_action TEXT DEFAULT '',
+    strategy_code TEXT DEFAULT '',
+    opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+            )
+        )
+        conn.execute(text("CREATE INDEX ix_paper_pos_status ON paper_trading_positions(status)"))
+        conn.execute(text("CREATE INDEX ix_paper_pos_symbol_market ON paper_trading_positions(stock_symbol, stock_market)"))
+    if not _has_table(conn, "paper_trading_trades"):
+        conn.execute(
+            text(
+                """
+CREATE TABLE paper_trading_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_symbol TEXT NOT NULL,
+    stock_market TEXT NOT NULL DEFAULT 'CN',
+    stock_name TEXT DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 100,
+    entry_price REAL NOT NULL,
+    exit_price REAL NOT NULL,
+    pnl REAL NOT NULL DEFAULT 0.0,
+    pnl_pct REAL NOT NULL DEFAULT 0.0,
+    exit_reason TEXT NOT NULL DEFAULT '',
+    signal_run_id INTEGER,
+    signal_snapshot_date TEXT DEFAULT '',
+    strategy_code TEXT DEFAULT '',
+    holding_days INTEGER DEFAULT 0,
+    opened_at DATETIME,
+    closed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    meta TEXT DEFAULT '{}'
+)
+"""
+            )
+        )
+        conn.execute(text("CREATE INDEX ix_paper_trade_closed ON paper_trading_trades(closed_at)"))
+        conn.execute(text("CREATE INDEX ix_paper_trade_symbol ON paper_trading_trades(stock_symbol, stock_market)"))
+
+
+def _m115_paper_trading_excluded_markets(conn: Connection) -> None:
+    """模拟盘账户新增 excluded_markets 字段。"""
+    _add_column_if_missing(
+        conn,
+        "paper_trading_account",
+        "excluded_markets",
+        "ALTER TABLE paper_trading_account ADD COLUMN excluded_markets TEXT DEFAULT '[]'",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1408,6 +1499,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(111, "strategy_layer", _m111_strategy_layer),
     Migration(112, "strategy_analytics_snapshots", _m112_strategy_analytics_snapshots),
     Migration(113, "market_scan_snapshot_and_mixed_source", _m113_market_scan_snapshot_and_mixed_source),
+    Migration(114, "paper_trading_tables", _m114_paper_trading_tables),
+    Migration(115, "paper_trading_excluded_markets", _m115_paper_trading_excluded_markets),
 )
 
 

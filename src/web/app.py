@@ -24,6 +24,7 @@ from src.web.api import (
     context,
     recommendations,
     dashboard,
+    paper_trading,
 )
 from src.web.api import insights
 from src.web.api.auth import get_current_user
@@ -141,6 +142,12 @@ app.include_router(
     dashboard.router,
     prefix="/api/dashboard",
     tags=["dashboard"],
+    dependencies=protected,
+)
+app.include_router(
+    paper_trading.router,
+    prefix="/api/paper-trading",
+    tags=["paper-trading"],
     dependencies=protected,
 )
 

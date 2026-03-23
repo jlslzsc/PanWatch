@@ -25,6 +25,7 @@ from src.core.ai_client import AIClient
 from src.core.notifier import NotifierManager
 from src.core.scheduler import AgentScheduler
 from src.core.price_alert_scheduler import PriceAlertScheduler
+from src.core.paper_trading_scheduler import PaperTradingScheduler
 from src.core.context_scheduler import ContextMaintenanceScheduler
 from src.core.agent_runs import record_agent_run
 from src.core.log_context import install_log_record_factory, log_context
@@ -45,6 +46,7 @@ logger = logging.getLogger(__name__)
 # 全局 scheduler 实例，供 agents API 调用
 scheduler: AgentScheduler | None = None
 price_alert_scheduler: PriceAlertScheduler | None = None
+paper_trading_scheduler: PaperTradingScheduler | None = None
 context_maintenance_scheduler: ContextMaintenanceScheduler | None = None
 
 
@@ -1102,7 +1104,7 @@ async def lifespan(app):
 
     threading.Thread(target=refresh_stock_cache, daemon=True).start()
 
-    global scheduler, price_alert_scheduler, context_maintenance_scheduler
+    global scheduler, price_alert_scheduler, paper_trading_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()
     scheduler.start()
     logger.info("Agent 调度器已启动")
@@ -1116,6 +1118,16 @@ async def lifespan(app):
         logger.info("价格提醒调度器已启动")
     except Exception as e:
         logger.error(f"价格提醒调度器启动失败: {e}")
+    try:
+        settings = Settings()
+        paper_trading_scheduler = PaperTradingScheduler(
+            timezone=settings.app_timezone,
+            interval_seconds=60,
+        )
+        paper_trading_scheduler.start()
+        logger.info("模拟盘调度器已启动")
+    except Exception as e:
+        logger.error(f"模拟盘调度器启动失败: {e}")
     try:
         settings = Settings()
         context_maintenance_scheduler = ContextMaintenanceScheduler(
@@ -1135,6 +1147,9 @@ async def lifespan(app):
     if price_alert_scheduler:
         price_alert_scheduler.shutdown()
         logger.info("价格提醒调度器已关闭")
+    if paper_trading_scheduler:
+        paper_trading_scheduler.shutdown()
+        logger.info("模拟盘调度器已关闭")
     if context_maintenance_scheduler:
         context_maintenance_scheduler.shutdown()
         logger.info("上下文维护调度器已关闭")
