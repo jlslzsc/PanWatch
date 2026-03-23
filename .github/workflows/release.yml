@@ -154,52 +154,41 @@ jobs:
           tag_name: ${{ steps.vars.outputs.version }}
           body_path: release-notes.md
 
-      - name: Notify Telegram
-        if: ${{ always() }}
+      - name: Send Telegram notification
+        if: ${{ github.event_name == 'push' }}
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          JOB_STATUS: ${{ job.status }}
-          VERSION: ${{ steps.vars.outputs.version }}
-        shell: bash
         run: |
-          set -euo pipefail
+          TAG="${{ steps.vars.outputs.version }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
 
-          if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
-            echo "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured; skip notify."
-            exit 0
-          fi
-
-          if [[ "${JOB_STATUS}" == "success" ]]; then
-            icon="✅"
-            status_text="发布成功"
+          # 获取 commit 变更列表
+          PREV_TAG=$(git tag --list --sort=-version:refname | grep -v "^${TAG}$" | head -n1)
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --no-merges --pretty=format:"- %s" "$PREV_TAG"..HEAD)
           else
-            icon="❌"
-            status_text="发布失败"
+            COMMITS=$(git log --no-merges --pretty=format:"- %s")
           fi
 
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          ref_name="${{ github.ref_name }}"
-          actor="${{ github.actor }}"
-          event_name="${{ github.event_name }}"
+          # 转义 Markdown 特殊字符，然后进行 URL 编码
+          COMMITS_ESCAPED=$(echo "$COMMITS" | sed 's/\*/\\*/g; s/_/\\_/g; s/\[/\\[/g; s/\]/\\]/g; s/`/\\`/g')
+          COMMITS_ENCODED=$(echo "$COMMITS_ESCAPED" | sed 's/$/%0A/g' | tr -d '\n')
 
-          if [[ -z "${VERSION}" ]]; then
-            VERSION="${ref_name}"
+          # 构建消息
+          MESSAGE="📊 *PanWatch ${TAG}* 发布%0A%0A"
+          MESSAGE="${MESSAGE}🔗 [查看完整说明](${RELEASE_URL})%0A%0A"
+          MESSAGE="${MESSAGE}*变更内容*:%0A${COMMITS_ENCODED}"
+
+          # 发送到 Telegram
+          if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=${MESSAGE}" \
+              -d "parse_mode=Markdown" \
+              -d "disable_web_page_preview=true"
+            echo "✅ Telegram notification sent successfully!"
+          else
+            echo "⚠️  Telegram credentials not configured, skipping notification"
           fi
-
-          text="$(cat <<EOF
-          ${icon} PanWatch Release ${status_text}
-          Repository: ${{ github.repository }}
-          Version: ${VERSION}
-          Ref: ${ref_name}
-          Trigger: ${event_name} by ${actor}
-          Run: ${run_url}
-          EOF
-          )"
-
-          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${text}" \
-            --data-urlencode "disable_web_page_preview=true" \
-            --max-time 20
