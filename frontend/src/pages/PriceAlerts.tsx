@@ -322,13 +322,23 @@ export default function PriceAlertsPage() {
                     冷却 {r.cooldown_minutes} 分钟 · 日上限 {r.max_triggers_per_day} 次 · 最近触发 {fmt(r.last_trigger_at)}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                {/* Desktop: buttons on the right */}
+                <div className="hidden md:flex items-center gap-1.5 shrink-0">
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => testRule(r)}>测试</Button>
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => openHits(r)}><BarChart3 className="w-3.5 h-3.5" /></Button>
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => openEdit(r)}>编辑</Button>
                   <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-8 px-2.5" onClick={() => toggleRule(r)}>{r.enabled ? '停用' : '启用'}</Button>
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => removeRule(r)}><Trash2 className="w-3.5 h-3.5" /></Button>
                 </div>
+              </div>
+              {/* Mobile: buttons at bottom */}
+              <div className="flex md:hidden items-center gap-1.5 mt-3 pt-3 border-t border-border/30">
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => testRule(r)}>测试</Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openHits(r)}><BarChart3 className="w-3 h-3" /></Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openEdit(r)}>编辑</Button>
+                <div className="flex-1" />
+                <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-7 px-2 text-[11px]" onClick={() => toggleRule(r)}>{r.enabled ? '停用' : '启用'}</Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => removeRule(r)}><Trash2 className="w-3 h-3" /></Button>
               </div>
             </div>
           ))}

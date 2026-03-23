@@ -186,9 +186,9 @@ export default function PaperTradingPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shrink-0">
             <Activity className="w-4 h-4 text-white" />
           </div>
           <h1 className="text-lg font-bold">模拟盘</h1>
@@ -199,21 +199,22 @@ export default function PaperTradingPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleScan} disabled={scanning}>
-            <Play className={`w-3.5 h-3.5 mr-1`} />
-            {scanning ? '扫描中...' : '立即扫描'}
+          <Button variant="outline" size="sm" className="h-8" onClick={handleScan} disabled={scanning}>
+            <Play className="w-3.5 h-3.5 mr-1" />
+            <span className="hidden sm:inline">{scanning ? '扫描中...' : '立即扫描'}</span>
+            <span className="sm:hidden">{scanning ? '扫描中' : '扫描'}</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            刷新
+          <Button variant="outline" size="sm" className="h-8" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline ml-1">刷新</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={handleToggle}>
-            <Power className="w-3.5 h-3.5 mr-1" />
-            {account?.enabled ? '暂停' : '启动'}
+          <Button variant="outline" size="sm" className="h-8" onClick={handleToggle}>
+            <Power className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline ml-1">{account?.enabled ? '暂停' : '启动'}</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={handleReset} className="text-destructive hover:text-destructive">
-            <RotateCcw className="w-3.5 h-3.5 mr-1" />
-            重置
+          <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" onClick={handleReset}>
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline ml-1">重置</span>
           </Button>
         </div>
       </div>
