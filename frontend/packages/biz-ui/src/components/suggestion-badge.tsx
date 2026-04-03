@@ -484,7 +484,7 @@ export function SuggestionBadge({
             {/* Feedback */}
             {canFeedback && (
               <div>
-                <div className="text-[11px] text-muted-foreground mb-1">这条建议是否有用？1</div>
+                <div className="text-[11px] text-muted-foreground mb-1">这条建议是否有用？</div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => submitFeedback(true)}
