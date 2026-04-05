@@ -5,6 +5,7 @@ import shutil
 from datetime import datetime
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from src.web.migrations import has_pending_migrations, run_versioned_migrations
 
@@ -20,9 +21,7 @@ engine = create_engine(
         "timeout": 30,
         "check_same_thread": False,
     },
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,
+    poolclass=NullPool,
 )
 
 
