@@ -12,6 +12,8 @@ from src.config import Settings
 from src.core.paper_trading_engine import ENGINE
 from src.web.database import get_db
 from src.web.models import (
+    AppSettings,
+    NotifyChannel,
     PaperTradingAccount,
     PaperTradingPosition,
     PaperTradingTrade,
@@ -312,8 +314,8 @@ def reset_account():
 
 
 @router.post("/positions/{position_id}/close")
-def close_position(position_id: int):
-    result = ENGINE.close_position_manual(position_id)
+async def close_position(position_id: int):
+    result = await ENGINE.close_position_manual_async(position_id)
     if not result.get("ok"):
         raise HTTPException(400, result.get("error", "平仓失败"))
     return {"ok": True}
@@ -337,3 +339,73 @@ async def manual_scan():
     """手动触发一次模拟盘扫描（建仓 + 平仓检查）。"""
     result = await ENGINE.scan_once()
     return result
+
+
+# ---------------------------------------------------------------------------
+# 跟单通知设置
+# ---------------------------------------------------------------------------
+
+_NOTIFY_KEYS = [
+    "pt_notify_enabled",
+    "pt_notify_channel_ids",
+    "pt_notify_realtime",
+    "pt_notify_premarket",
+    "pt_notify_summary",
+]
+
+_NOTIFY_DEFAULTS = {
+    "pt_notify_enabled": "false",
+    "pt_notify_channel_ids": "",
+    "pt_notify_realtime": "true",
+    "pt_notify_premarket": "true",
+    "pt_notify_summary": "true",
+}
+
+
+@router.get("/notify-settings")
+def get_notify_settings(db: Session = Depends(get_db)):
+    """返回当前通知配置 + 可用渠道列表。"""
+    rows = db.query(AppSettings).filter(AppSettings.key.in_(_NOTIFY_KEYS)).all()
+    settings = dict(_NOTIFY_DEFAULTS)
+    for r in rows:
+        settings[r.key] = r.value or _NOTIFY_DEFAULTS.get(r.key, "")
+
+    channels = db.query(NotifyChannel).filter(NotifyChannel.enabled.is_(True)).all()
+    channel_list = [
+        {"id": ch.id, "name": ch.name, "type": ch.type, "is_default": ch.is_default}
+        for ch in channels
+    ]
+
+    return {"settings": settings, "channels": channel_list}
+
+
+class NotifySettingsBody(BaseModel):
+    pt_notify_enabled: str | None = None
+    pt_notify_channel_ids: str | None = None
+    pt_notify_realtime: str | None = None
+    pt_notify_premarket: str | None = None
+    pt_notify_summary: str | None = None
+
+
+@router.post("/notify-settings")
+def update_notify_settings(body: NotifySettingsBody, db: Session = Depends(get_db)):
+    """更新通知配置。"""
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    for key, value in updates.items():
+        row = db.query(AppSettings).filter(AppSettings.key == key).first()
+        if row:
+            row.value = value
+        else:
+            db.add(AppSettings(key=key, value=value, description=f"模拟盘通知配置: {key}"))
+    db.commit()
+    return get_notify_settings(db)
+
+
+@router.post("/notify-test")
+async def test_notify():
+    """发送测试通知。"""
+    from src.core.paper_trading_notifier import send_test_notification
+    result = await send_test_notification()
+    if not result.get("success"):
+        raise HTTPException(400, result.get("error", "发送失败"))
+    return {"ok": True}

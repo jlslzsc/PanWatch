@@ -92,8 +92,10 @@ class PaperTradingEngine:
                     out[(market.value, sym)] = q
         return out
 
-    def _check_entries(self, db: Session, account: PaperTradingAccount) -> tuple[int, set[tuple[str, str]]]:
-        """检查可入场的策略信号，自动建仓。返回 (建仓数, 新建仓股票key集合)。"""
+    def _check_entries(
+        self, db: Session, account: PaperTradingAccount,
+    ) -> tuple[int, set[tuple[str, str]], list[tuple[PaperTradingPosition, StrategySignalRun | None]]]:
+        """检查可入场的策略信号，自动建仓。返回 (建仓数, 新建仓股票key集合, 建仓事件列表)。"""
         # 查询最新活跃买入信号
         query = (
             db.query(StrategySignalRun)
@@ -109,9 +111,10 @@ class PaperTradingEngine:
         if excluded:
             query = query.filter(StrategySignalRun.stock_market.notin_(excluded))
         signals = query.order_by(StrategySignalRun.rank_score.desc()).limit(50).all()
+        entry_events: list[tuple[PaperTradingPosition, StrategySignalRun | None]] = []
         new_keys: set[tuple[str, str]] = set()
         if not signals:
-            return 0, new_keys
+            return 0, new_keys, entry_events
 
         # 已有 open position 的股票
         open_keys = set()
@@ -136,7 +139,7 @@ class PaperTradingEngine:
             candidates.append(sig)
 
         if not candidates:
-            return 0, new_keys
+            return 0, new_keys, entry_events
 
         # 批量获取报价
         syms = [(s.stock_symbol, s.stock_market) for s in candidates]
@@ -197,6 +200,7 @@ class PaperTradingEngine:
             account.current_capital -= cost
             open_keys.add((sig.stock_symbol, sig.stock_market))
             new_keys.add((sig.stock_symbol, sig.stock_market))
+            entry_events.append((pos, sig))
             opened += 1
             logger.info(
                 "[模拟盘] 建仓: %s %s @ %.2f, 止损=%.2f, 止盈=%s, 策略=%s",
@@ -210,7 +214,7 @@ class PaperTradingEngine:
 
         if opened > 0:
             db.commit()
-        return opened, new_keys
+        return opened, new_keys, entry_events
 
     def _close_position(
         self,
@@ -219,8 +223,8 @@ class PaperTradingEngine:
         pos: PaperTradingPosition,
         exit_price: float,
         exit_reason: str,
-    ) -> None:
-        """平仓单个持仓。"""
+    ) -> PaperTradingTrade:
+        """平仓单个持仓，返回交易记录。"""
         now = _utc_now()
         pnl = (exit_price - pos.entry_price) * pos.quantity
         pnl_pct = ((exit_price - pos.entry_price) / pos.entry_price * 100) if pos.entry_price > 0 else 0.0
@@ -272,16 +276,20 @@ class PaperTradingEngine:
             pnl_pct,
             exit_reason,
         )
+        return trade
 
-    def _check_exits(self, db: Session, account: PaperTradingAccount, skip_keys: set[tuple[str, str]] | None = None) -> int:
+    def _check_exits(
+        self, db: Session, account: PaperTradingAccount, skip_keys: set[tuple[str, str]] | None = None,
+    ) -> tuple[int, list[tuple[PaperTradingPosition, PaperTradingTrade]]]:
         """检查持仓止损/止盈/信号反转，自动平仓。skip_keys 中的股票跳过（本轮新建仓）。"""
+        exit_events: list[tuple[PaperTradingPosition, PaperTradingTrade]] = []
         positions = (
             db.query(PaperTradingPosition)
             .filter(PaperTradingPosition.status == "open")
             .all()
         )
         if not positions:
-            return 0
+            return 0, exit_events
 
         # 批量获取报价
         syms = [(p.stock_symbol, p.stock_market) for p in positions]
@@ -305,13 +313,15 @@ class PaperTradingEngine:
 
             # 检查止损
             if pos.stop_loss and current_price <= pos.stop_loss:
-                self._close_position(db, account, pos, current_price, "stop_loss")
+                trade = self._close_position(db, account, pos, current_price, "stop_loss")
+                exit_events.append((pos, trade))
                 closed += 1
                 continue
 
             # 检查止盈
             if pos.target_price and current_price >= pos.target_price:
-                self._close_position(db, account, pos, current_price, "target_price")
+                trade = self._close_position(db, account, pos, current_price, "target_price")
+                exit_events.append((pos, trade))
                 closed += 1
                 continue
 
@@ -328,13 +338,14 @@ class PaperTradingEngine:
                     .first()
                 )
                 if latest and latest.action in ("sell", "reduce"):
-                    self._close_position(db, account, pos, current_price, "signal_reversal")
+                    trade = self._close_position(db, account, pos, current_price, "signal_reversal")
+                    exit_events.append((pos, trade))
                     closed += 1
                     continue
 
         self._update_account_metrics(db, account)
         db.commit()
-        return closed
+        return closed, exit_events
 
     def _update_account_metrics(self, db: Session, account: PaperTradingAccount) -> None:
         """更新账户峰值和最大回撤。"""
@@ -365,13 +376,15 @@ class PaperTradingEngine:
             if not account.enabled:
                 return {"status": "disabled"}
 
-            opened, new_keys = self._check_entries(db, account)
-            closed = self._check_exits(db, account, skip_keys=new_keys)
+            opened, new_keys, entry_events = self._check_entries(db, account)
+            closed, exit_events = self._check_exits(db, account, skip_keys=new_keys)
 
             return {
                 "status": "ok",
                 "opened": opened,
                 "closed": closed,
+                "entry_events": entry_events,
+                "exit_events": exit_events,
             }
         except Exception as e:
             logger.exception(f"[模拟盘] 扫描异常: {e}")
@@ -381,7 +394,10 @@ class PaperTradingEngine:
 
     async def scan_once(self) -> dict:
         """异步扫描入口。"""
-        return await asyncio.to_thread(self._scan_sync)
+        result = await asyncio.to_thread(self._scan_sync)
+        # 发送通知（异步，失败不影响交易）
+        await self._send_notifications(result)
+        return result
 
     def close_position_manual(self, position_id: int) -> dict:
         """手动平仓。"""
@@ -413,12 +429,38 @@ class PaperTradingEngine:
                 if p and p > 0:
                     exit_price = p
 
-            self._close_position(db, account, pos, exit_price, "manual")
+            trade = self._close_position(db, account, pos, exit_price, "manual")
             self._update_account_metrics(db, account)
             db.commit()
-            return {"ok": True}
+            return {"ok": True, "pos": pos, "trade": trade}
         finally:
             db.close()
+
+    async def close_position_manual_async(self, position_id: int) -> dict:
+        """异步手动平仓，含通知。"""
+        result = await asyncio.to_thread(self.close_position_manual, position_id)
+        if result.get("ok"):
+            try:
+                from src.core.paper_trading_notifier import notify_exit
+                pos = result.pop("pos", None)
+                trade = result.pop("trade", None)
+                if pos and trade:
+                    await notify_exit(pos, trade)
+            except Exception:
+                logger.exception("[模拟盘] 手动平仓通知失败")
+        return result
+
+    async def _send_notifications(self, result: dict) -> None:
+        """从扫描结果中取出事件，发送通知。"""
+        try:
+            from src.core.paper_trading_notifier import notify_entry, notify_exit
+
+            for pos, sig in result.pop("entry_events", []):
+                await notify_entry(pos, sig)
+            for pos, trade in result.pop("exit_events", []):
+                await notify_exit(pos, trade)
+        except Exception:
+            logger.exception("[模拟盘] 通知发送失败")
 
     def reset_account(self) -> dict:
         """重置模拟盘（清空所有数据）。"""

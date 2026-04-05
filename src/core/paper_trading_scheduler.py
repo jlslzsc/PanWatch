@@ -35,12 +35,50 @@ class PaperTradingScheduler:
         finally:
             self._running = False
 
+    async def _premarket_job(self):
+        """盘前计划通知。"""
+        try:
+            from src.core.paper_trading_notifier import send_premarket_plan
+            await send_premarket_plan()
+        except Exception as e:
+            logger.exception(f"[模拟盘] 盘前计划通知异常: {e}")
+
+    async def _summary_job(self):
+        """日终摘要通知。"""
+        try:
+            from src.core.paper_trading_notifier import send_daily_summary
+            await send_daily_summary()
+        except Exception as e:
+            logger.exception(f"[模拟盘] 日终摘要通知异常: {e}")
+
     def start(self):
         self.scheduler.add_job(
             self._scan_job,
             "interval",
             seconds=self.interval_seconds,
             id="paper_trading_scan",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+        # 盘前计划 - 每天 09:00
+        self.scheduler.add_job(
+            self._premarket_job,
+            "cron",
+            hour=9,
+            minute=0,
+            id="paper_trading_premarket",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+        # 日终摘要 - 每天 15:30
+        self.scheduler.add_job(
+            self._summary_job,
+            "cron",
+            hour=15,
+            minute=30,
+            id="paper_trading_summary",
             replace_existing=True,
             coalesce=True,
             max_instances=1,

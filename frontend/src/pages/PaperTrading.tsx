@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play } from 'lucide-react'
+import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell } from 'lucide-react'
 import {
   paperTradingApi,
   type PaperTradingAccountResponse,
@@ -7,8 +7,11 @@ import {
   type PaperTradingTradeItem,
   type EquityCurvePoint,
   type StrategyPerformanceItem,
+  type NotifyChannelItem,
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 const EXIT_REASON_MAP: Record<string, string> = {
@@ -112,6 +115,17 @@ export default function PaperTradingPage() {
   const [tradesPage, setTradesPage] = useState(0)
   const tradesPageSize = 20
 
+  // 通知设置
+  const [notifyOpen, setNotifyOpen] = useState(false)
+  const [notifyEnabled, setNotifyEnabled] = useState(false)
+  const [notifyRealtime, setNotifyRealtime] = useState(true)
+  const [notifyPremarket, setNotifyPremarket] = useState(true)
+  const [notifySummary, setNotifySummary] = useState(true)
+  const [notifyChannels, setNotifyChannels] = useState<NotifyChannelItem[]>([])
+  const [selectedChannelIds, setSelectedChannelIds] = useState<Set<number>>(new Set())
+  const [notifySaving, setNotifySaving] = useState(false)
+  const [notifyTesting, setNotifyTesting] = useState(false)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -181,6 +195,69 @@ export default function PaperTradingPage() {
     }
   }
 
+  const loadNotifySettings = async () => {
+    try {
+      const data = await paperTradingApi.getNotifySettings()
+      const s = data.settings
+      setNotifyEnabled(s.pt_notify_enabled === 'true')
+      setNotifyRealtime(s.pt_notify_realtime === 'true')
+      setNotifyPremarket(s.pt_notify_premarket === 'true')
+      setNotifySummary(s.pt_notify_summary === 'true')
+      setNotifyChannels(data.channels)
+      const ids = s.pt_notify_channel_ids
+        ? new Set(s.pt_notify_channel_ids.split(',').map(Number).filter(Boolean))
+        : new Set<number>()
+      setSelectedChannelIds(ids)
+    } catch {
+      toast('加载通知配置失败', 'error')
+    }
+  }
+
+  const handleOpenNotify = async () => {
+    setNotifyOpen(true)
+    await loadNotifySettings()
+  }
+
+  const handleSaveNotify = async () => {
+    setNotifySaving(true)
+    try {
+      await paperTradingApi.updateNotifySettings({
+        pt_notify_enabled: notifyEnabled ? 'true' : 'false',
+        pt_notify_channel_ids: Array.from(selectedChannelIds).join(','),
+        pt_notify_realtime: notifyRealtime ? 'true' : 'false',
+        pt_notify_premarket: notifyPremarket ? 'true' : 'false',
+        pt_notify_summary: notifySummary ? 'true' : 'false',
+      })
+      toast('通知配置已保存', 'success')
+      setNotifyOpen(false)
+    } catch {
+      toast('保存失败', 'error')
+    } finally {
+      setNotifySaving(false)
+    }
+  }
+
+  const handleTestNotify = async () => {
+    setNotifyTesting(true)
+    try {
+      await paperTradingApi.testNotify()
+      toast('测试通知已发送', 'success')
+    } catch {
+      toast('测试通知发送失败', 'error')
+    } finally {
+      setNotifyTesting(false)
+    }
+  }
+
+  const toggleChannel = (id: number) => {
+    setSelectedChannelIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const totalPages = Math.ceil(tradesTotal / tradesPageSize)
 
   return (
@@ -199,6 +276,10 @@ export default function PaperTradingPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8" onClick={handleOpenNotify}>
+            <Bell className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline ml-1">通知</span>
+          </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={handleScan} disabled={scanning}>
             <Play className="w-3.5 h-3.5 mr-1" />
             <span className="hidden sm:inline">{scanning ? '扫描中...' : '立即扫描'}</span>
@@ -471,6 +552,96 @@ export default function PaperTradingPage() {
           </>
         )}
       </div>
+
+      {/* 跟单通知设置对话框 */}
+      <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>跟单通知设置</DialogTitle>
+            <DialogDescription>配置模拟盘交易通知，实时跟踪建仓/平仓动作</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            {/* 总开关 */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium">启用通知</div>
+                <div className="text-xs text-muted-foreground">开启后将通过所选渠道推送交易通知</div>
+              </div>
+              <Switch checked={notifyEnabled} onCheckedChange={setNotifyEnabled} />
+            </div>
+
+            {notifyEnabled && (
+              <>
+                {/* 通知渠道选择 */}
+                <div>
+                  <div className="text-sm font-medium mb-2">通知渠道</div>
+                  {notifyChannels.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">暂无可用渠道，请先在设置中配置通知渠道</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {notifyChannels.map(ch => (
+                        <button
+                          key={ch.id}
+                          onClick={() => toggleChannel(ch.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                            selectedChannelIds.has(ch.id)
+                              ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                              : 'bg-muted/50 text-muted-foreground'
+                          }`}
+                        >
+                          {ch.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {selectedChannelIds.size === 0 && notifyChannels.length > 0 && (
+                    <div className="text-xs text-muted-foreground mt-1">未选择渠道时将使用默认渠道</div>
+                  )}
+                </div>
+
+                {/* 通知模式 */}
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">通知模式</div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">实时交易信号</div>
+                      <div className="text-xs text-muted-foreground">建仓/平仓时立即推送</div>
+                    </div>
+                    <Switch checked={notifyRealtime} onCheckedChange={setNotifyRealtime} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">盘前计划</div>
+                      <div className="text-xs text-muted-foreground">每天 09:00 推送当日候选列表</div>
+                    </div>
+                    <Switch checked={notifyPremarket} onCheckedChange={setNotifyPremarket} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">日终摘要</div>
+                      <div className="text-xs text-muted-foreground">每天 15:30 推送当日操作汇总</div>
+                    </div>
+                    <Switch checked={notifySummary} onCheckedChange={setNotifySummary} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* 操作按钮 */}
+            <div className="flex items-center gap-2 pt-2">
+              <Button size="sm" onClick={handleSaveNotify} disabled={notifySaving}>
+                {notifySaving ? '保存中...' : '保存'}
+              </Button>
+              {notifyEnabled && (
+                <Button variant="outline" size="sm" onClick={handleTestNotify} disabled={notifyTesting}>
+                  {notifyTesting ? '发送中...' : '测试通知'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -89,6 +89,24 @@ export interface PaperTradingMetricsResponse {
   strategy_performance: StrategyPerformanceItem[]
 }
 
+export interface NotifyChannelItem {
+  id: number
+  name: string
+  type: string
+  is_default: boolean
+}
+
+export interface PaperTradingNotifySettings {
+  settings: {
+    pt_notify_enabled: string
+    pt_notify_channel_ids: string
+    pt_notify_realtime: string
+    pt_notify_premarket: string
+    pt_notify_summary: string
+  }
+  channels: NotifyChannelItem[]
+}
+
 export const paperTradingApi = {
   getAccount: () =>
     fetchAPI<PaperTradingAccountResponse>('/paper-trading/account'),
@@ -130,5 +148,19 @@ export const paperTradingApi = {
     fetchAPI<{ status: string; opened: number; closed: number }>('/paper-trading/scan', {
       method: 'POST',
       timeoutMs: 30000,
+    }),
+
+  getNotifySettings: () =>
+    fetchAPI<PaperTradingNotifySettings>('/paper-trading/notify-settings'),
+
+  updateNotifySettings: (settings: Record<string, string>) =>
+    fetchAPI<PaperTradingNotifySettings>('/paper-trading/notify-settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    }),
+
+  testNotify: () =>
+    fetchAPI<{ ok: boolean }>('/paper-trading/notify-test', {
+      method: 'POST',
     }),
 }
