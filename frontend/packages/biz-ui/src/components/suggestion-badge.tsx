@@ -244,6 +244,7 @@ export function SuggestionBadge({
             className="max-w-md"
             onPointerDownOutside={(e) => { e.preventDefault(); setDialogOpen(false) }}
             onInteractOutside={(e) => { e.preventDefault(); setDialogOpen(false) }}
+            onClick={(e) => e.stopPropagation()}
           >
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -452,6 +453,7 @@ export function SuggestionBadge({
           className="max-w-md"
           onPointerDownOutside={(e) => { e.preventDefault(); setDialogOpen(false) }}
           onInteractOutside={(e) => { e.preventDefault(); setDialogOpen(false) }}
+          onClick={(e) => e.stopPropagation()}
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
