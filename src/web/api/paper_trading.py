@@ -409,3 +409,19 @@ async def test_notify():
     if not result.get("success"):
         raise HTTPException(400, result.get("error", "发送失败"))
     return {"ok": True}
+
+
+@router.post("/premarket-plan")
+async def trigger_premarket_plan():
+    """手动触发盘前计划通知。"""
+    from src.core.paper_trading_notifier import send_premarket_plan
+    await send_premarket_plan()
+    return {"ok": True}
+
+
+@router.post("/daily-summary")
+async def trigger_daily_summary():
+    """手动触发日终摘要通知。"""
+    from src.core.paper_trading_notifier import send_daily_summary
+    await send_daily_summary()
+    return {"ok": True}

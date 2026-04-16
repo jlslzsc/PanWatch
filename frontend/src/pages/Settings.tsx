@@ -792,16 +792,33 @@ export default function SettingsPage() {
               {filteredSettings.map(setting => {
                 const currentValue = edited[setting.key] ?? setting.value
                 const isChanged = setting.key in edited
+                const STOCK_LINK_OPTIONS: Record<string, string> = { xueqiu: '雪球' }
                 return (
                   <div key={setting.key}>
                     <Label>{setting.description || setting.key}</Label>
                     <div className="flex items-center gap-2.5">
+                      {setting.key === 'stock_link_platform' ? (
+                        <Select
+                          value={currentValue || 'xueqiu'}
+                          onValueChange={v => setEdited({ ...edited, [setting.key]: v })}
+                        >
+                          <SelectTrigger className={`${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(STOCK_LINK_OPTIONS).map(([val, label]) => (
+                              <SelectItem key={val} value={val}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
                       <Input
                         value={currentValue}
                         onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
                         className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
                         placeholder={setting.key}
                       />
+                      )}
                       <button
                         onClick={() => handleSave(setting.key)}
                         disabled={!isChanged || saving === setting.key}

@@ -116,6 +116,7 @@ export default function PaperTradingPage() {
   const tradesPageSize = 20
 
   // 通知设置
+  const [tradesOpen, setTradesOpen] = useState(false)
   const [notifyOpen, setNotifyOpen] = useState(false)
   const [notifyEnabled, setNotifyEnabled] = useState(false)
   const [notifyRealtime, setNotifyRealtime] = useState(true)
@@ -276,6 +277,13 @@ export default function PaperTradingPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {tradesTotal > 0 && (
+            <Button variant="outline" size="sm" className="h-8" onClick={() => setTradesOpen(true)}>
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline ml-1">平仓记录 ({tradesTotal})</span>
+              <span className="sm:hidden ml-1">{tradesTotal}</span>
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="h-8" onClick={handleOpenNotify}>
             <Bell className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">通知</span>
@@ -484,74 +492,79 @@ export default function PaperTradingPage() {
         )}
       </div>
 
-      {/* Trade History */}
-      <div className="card p-4">
-        <h2 className="text-sm font-semibold mb-3">已平仓记录 ({tradesTotal})</h2>
-        {trades.length === 0 ? (
-          <div className="text-center text-muted-foreground text-sm py-8">暂无交易记录</div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground text-xs">
-                    <th className="text-left py-2 pr-3">股票</th>
-                    <th className="text-right py-2 px-2">入场价</th>
-                    <th className="text-right py-2 px-2">出场价</th>
-                    <th className="text-right py-2 px-2">盈亏</th>
-                    <th className="text-right py-2 px-2">盈亏%</th>
-                    <th className="text-left py-2 px-2">出场原因</th>
-                    <th className="text-left py-2 px-2">策略</th>
-                    <th className="text-right py-2 px-2">持仓天数</th>
-                    <th className="text-right py-2 pl-2">平仓时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trades.map(t => (
-                    <tr key={t.id} className="border-b border-border/50 hover:bg-accent/30">
-                      <td className="py-2 pr-3">
-                        <div className="font-medium">{t.stock_name || t.stock_symbol}</div>
-                        <div className="text-xs text-muted-foreground">{t.stock_symbol} · {t.stock_market}</div>
-                      </td>
-                      <td className="text-right py-2 px-2">{t.entry_price.toFixed(2)}</td>
-                      <td className="text-right py-2 px-2">{t.exit_price.toFixed(2)}</td>
-                      <td className="text-right py-2 px-2"><PnlText value={t.pnl} /></td>
-                      <td className="text-right py-2 px-2"><PnlPctText value={t.pnl_pct} /></td>
-                      <td className="py-2 px-2 text-xs">{EXIT_REASON_MAP[t.exit_reason] || t.exit_reason}</td>
-                      <td className="py-2 px-2 text-xs text-muted-foreground">{t.strategy_code || '-'}</td>
-                      <td className="text-right py-2 px-2">{t.holding_days}天</td>
-                      <td className="text-right py-2 pl-2 text-xs text-muted-foreground">{t.closed_at?.slice(0, 10) || '-'}</td>
+      {/* Trade History Dialog */}
+      <Dialog open={tradesOpen} onOpenChange={setTradesOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>已平仓记录 ({tradesTotal})</DialogTitle>
+            <DialogDescription>历史交易详情</DialogDescription>
+          </DialogHeader>
+          {trades.length === 0 ? (
+            <div className="text-center text-muted-foreground text-sm py-8">暂无交易记录</div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground text-xs">
+                      <th className="text-left py-2 pr-3">股票</th>
+                      <th className="text-right py-2 px-2">入场价</th>
+                      <th className="text-right py-2 px-2">出场价</th>
+                      <th className="text-right py-2 px-2">盈亏</th>
+                      <th className="text-right py-2 px-2">盈亏%</th>
+                      <th className="text-left py-2 px-2">出场原因</th>
+                      <th className="text-left py-2 px-2">策略</th>
+                      <th className="text-right py-2 px-2">持仓天数</th>
+                      <th className="text-right py-2 pl-2">平仓时间</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={tradesPage === 0}
-                  onClick={() => setTradesPage(p => Math.max(0, p - 1))}
-                >
-                  上一页
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {tradesPage + 1} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={tradesPage >= totalPages - 1}
-                  onClick={() => setTradesPage(p => p + 1)}
-                >
-                  下一页
-                </Button>
+                  </thead>
+                  <tbody>
+                    {trades.map(t => (
+                      <tr key={t.id} className="border-b border-border/50 hover:bg-accent/30">
+                        <td className="py-2 pr-3">
+                          <div className="font-medium">{t.stock_name || t.stock_symbol}</div>
+                          <div className="text-xs text-muted-foreground">{t.stock_symbol} · {t.stock_market}</div>
+                        </td>
+                        <td className="text-right py-2 px-2">{t.entry_price.toFixed(2)}</td>
+                        <td className="text-right py-2 px-2">{t.exit_price.toFixed(2)}</td>
+                        <td className="text-right py-2 px-2"><PnlText value={t.pnl} /></td>
+                        <td className="text-right py-2 px-2"><PnlPctText value={t.pnl_pct} /></td>
+                        <td className="py-2 px-2 text-xs">{EXIT_REASON_MAP[t.exit_reason] || t.exit_reason}</td>
+                        <td className="py-2 px-2 text-xs text-muted-foreground">{t.strategy_code || '-'}</td>
+                        <td className="text-right py-2 px-2">{t.holding_days}天</td>
+                        <td className="text-right py-2 pl-2 text-xs text-muted-foreground">{t.closed_at?.slice(0, 10) || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </>
-        )}
-      </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={tradesPage === 0}
+                    onClick={() => setTradesPage(p => Math.max(0, p - 1))}
+                  >
+                    上一页
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {tradesPage + 1} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={tradesPage >= totalPages - 1}
+                    onClick={() => setTradesPage(p => p + 1)}
+                  >
+                    下一页
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* 跟单通知设置对话框 */}
       <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>

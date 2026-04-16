@@ -52,6 +52,57 @@ def _safe_float(v: Any) -> float | None:
         return None
 
 
+def _serialize_position(pos: PaperTradingPosition) -> dict:
+    """将 ORM Position 提取为 plain dict，避免 detached 问题。"""
+    return {
+        "id": pos.id,
+        "stock_symbol": pos.stock_symbol,
+        "stock_market": pos.stock_market,
+        "stock_name": pos.stock_name or "",
+        "quantity": pos.quantity,
+        "entry_price": pos.entry_price,
+        "stop_loss": pos.stop_loss,
+        "target_price": pos.target_price,
+        "current_price": pos.current_price,
+        "unrealized_pnl": pos.unrealized_pnl,
+        "status": pos.status,
+        "strategy_code": pos.strategy_code or "",
+    }
+
+
+def _serialize_trade(trade: PaperTradingTrade) -> dict:
+    """将 ORM Trade 提取为 plain dict。"""
+    return {
+        "id": trade.id,
+        "stock_symbol": trade.stock_symbol,
+        "stock_market": trade.stock_market,
+        "stock_name": trade.stock_name or "",
+        "quantity": trade.quantity,
+        "entry_price": trade.entry_price,
+        "exit_price": trade.exit_price,
+        "pnl": trade.pnl,
+        "pnl_pct": trade.pnl_pct,
+        "exit_reason": trade.exit_reason,
+        "holding_days": trade.holding_days,
+        "strategy_code": trade.strategy_code or "",
+    }
+
+
+def _serialize_signal(sig: StrategySignalRun) -> dict:
+    """将 ORM Signal 提取为 plain dict。"""
+    return {
+        "id": sig.id,
+        "stock_symbol": sig.stock_symbol,
+        "stock_market": sig.stock_market,
+        "stock_name": sig.stock_name or "",
+        "strategy_code": sig.strategy_code or "",
+        "rank_score": sig.rank_score,
+        "entry_low": sig.entry_low,
+        "entry_high": sig.entry_high,
+        "action": sig.action,
+    }
+
+
 class PaperTradingEngine:
     """模拟盘扫描引擎。"""
 
@@ -379,12 +430,22 @@ class PaperTradingEngine:
             opened, new_keys, entry_events = self._check_entries(db, account)
             closed, exit_events = self._check_exits(db, account, skip_keys=new_keys)
 
+            # 在 db.close() 前将 ORM 对象序列化为 dict，避免 detached 问题
+            serialized_entries = [
+                {"pos_data": _serialize_position(pos), "sig_data": _serialize_signal(sig) if sig else None}
+                for pos, sig in entry_events
+            ]
+            serialized_exits = [
+                {"pos_data": _serialize_position(pos), "trade_data": _serialize_trade(trade)}
+                for pos, trade in exit_events
+            ]
+
             return {
                 "status": "ok",
                 "opened": opened,
                 "closed": closed,
-                "entry_events": entry_events,
-                "exit_events": exit_events,
+                "entry_events": serialized_entries,
+                "exit_events": serialized_exits,
             }
         except Exception as e:
             logger.exception(f"[模拟盘] 扫描异常: {e}")
@@ -432,7 +493,12 @@ class PaperTradingEngine:
             trade = self._close_position(db, account, pos, exit_price, "manual")
             self._update_account_metrics(db, account)
             db.commit()
-            return {"ok": True, "pos": pos, "trade": trade}
+            # 序列化后返回，避免 db.close() 后 ORM 对象 detached
+            return {
+                "ok": True,
+                "pos_data": _serialize_position(pos),
+                "trade_data": _serialize_trade(trade),
+            }
         finally:
             db.close()
 
@@ -442,23 +508,23 @@ class PaperTradingEngine:
         if result.get("ok"):
             try:
                 from src.core.paper_trading_notifier import notify_exit
-                pos = result.pop("pos", None)
-                trade = result.pop("trade", None)
-                if pos and trade:
-                    await notify_exit(pos, trade)
+                pos_data = result.pop("pos_data", None)
+                trade_data = result.pop("trade_data", None)
+                if pos_data and trade_data:
+                    await notify_exit(pos_data, trade_data)
             except Exception:
                 logger.exception("[模拟盘] 手动平仓通知失败")
         return result
 
     async def _send_notifications(self, result: dict) -> None:
-        """从扫描结果中取出事件，发送通知。"""
+        """从扫描结果中取出序列化事件，发送通知。"""
         try:
             from src.core.paper_trading_notifier import notify_entry, notify_exit
 
-            for pos, sig in result.pop("entry_events", []):
-                await notify_entry(pos, sig)
-            for pos, trade in result.pop("exit_events", []):
-                await notify_exit(pos, trade)
+            for evt in result.pop("entry_events", []):
+                await notify_entry(evt["pos_data"], evt.get("sig_data"))
+            for evt in result.pop("exit_events", []):
+                await notify_exit(evt["pos_data"], evt["trade_data"])
         except Exception:
             logger.exception("[模拟盘] 通知发送失败")
 
