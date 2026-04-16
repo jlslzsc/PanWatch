@@ -109,7 +109,7 @@ def _make_account(**kwargs):
 
 class TestPremarketDedup(unittest.TestCase):
     def test_dedup_same_stock_multiple_strategies(self):
-        """同一股票 4 条不同策略信号，去重后只保留 1 条。"""
+        """盘前去重 — 同股票4策略合并为1条"""
         signals = [
             _make_signal(id=1, strategy_code="trend_follow", rank_score=100.0),
             _make_signal(id=2, strategy_code="macd_golden", rank_score=90.0),
@@ -124,7 +124,7 @@ class TestPremarketDedup(unittest.TestCase):
         self.assertEqual(sig.rank_score, 100.0)
 
     def test_dedup_different_stocks(self):
-        """不同股票各自保留。"""
+        """盘前去重 — 不同股票各自保留"""
         signals = [
             _make_signal(id=1, stock_symbol="002837", rank_score=100.0),
             _make_signal(id=2, stock_symbol="000001", stock_name="平安银行", rank_score=95.0),
@@ -138,7 +138,7 @@ class TestPremarketDedup(unittest.TestCase):
         self.assertEqual(deduped[1][1], 1)
 
     def test_premarket_plan_format_with_dedup(self):
-        """格式化输出中股票只出现 1 次，且显示策略数量和链接。"""
+        """盘前计划 — 去重后格式化含策略数和链接"""
         signals = [
             _make_signal(id=1, strategy_code="trend_follow", rank_score=100.0),
             _make_signal(id=2, strategy_code="macd_golden", rank_score=90.0),
@@ -158,7 +158,7 @@ class TestPremarketDedup(unittest.TestCase):
         self.assertIn("xueqiu.com", body)
 
     def test_premarket_plan_no_signals(self):
-        """空信号时的格式化输出。"""
+        """盘前计划 — 空信号显示无候选"""
         account = _make_account()
         title, body = _format_premarket_plan([], account)
         self.assertIn("无候选", body)
@@ -171,7 +171,7 @@ class TestPremarketDedup(unittest.TestCase):
 
 class TestMessageFormat(unittest.TestCase):
     def test_entry_message_format(self):
-        """建仓通知格式化（使用 dict 输入）。"""
+        """建仓通知 — 格式含价格/策略/链接"""
         pos_data = {
             "stock_symbol": "002837",
             "stock_market": "CN",
@@ -197,7 +197,7 @@ class TestMessageFormat(unittest.TestCase):
         self.assertIn("xueqiu.com", body)  # 股票链接
 
     def test_entry_message_no_signal(self):
-        """建仓通知无信号时不报错。"""
+        """建仓通知 — 无信号时不报错"""
         pos_data = {
             "stock_symbol": "002837",
             "stock_market": "CN",
@@ -213,7 +213,7 @@ class TestMessageFormat(unittest.TestCase):
         self.assertIn("趋势延续", body)
 
     def test_exit_message_format(self):
-        """平仓通知格式化（使用 dict 输入）。"""
+        """平仓通知 — 盈利格式含止盈/持仓天数"""
         pos_data = {
             "stock_symbol": "002837",
             "stock_market": "CN",
@@ -237,7 +237,7 @@ class TestMessageFormat(unittest.TestCase):
         self.assertIn("xueqiu.com", body)  # 股票链接
 
     def test_exit_message_loss(self):
-        """平仓亏损时显示负号。"""
+        """平仓通知 — 亏损时显示负号和止损"""
         pos_data = {"stock_symbol": "002837", "stock_market": "CN", "stock_name": "英维克"}
         trade_data = {
             "entry_price": 113.0,
@@ -252,7 +252,7 @@ class TestMessageFormat(unittest.TestCase):
         self.assertIn("止损", body)
 
     def test_daily_summary_format(self):
-        """日终摘要格式化。"""
+        """日终摘要 — 含总资产/平仓笔数/持仓数"""
         trades = [_make_trade()]
         positions = [_make_position()]
         account = _make_account()
@@ -270,6 +270,7 @@ class TestMessageFormat(unittest.TestCase):
 
 class TestSerialize(unittest.TestCase):
     def test_serialize_position(self):
+        """序列化 — 持仓对象转 dict"""
         pos = _make_position()
         d = _serialize_position(pos)
         self.assertEqual(d["stock_symbol"], "002837")
@@ -278,6 +279,7 @@ class TestSerialize(unittest.TestCase):
         self.assertIn("id", d)
 
     def test_serialize_trade(self):
+        """序列化 — 交易记录转 dict"""
         trade = _make_trade()
         d = _serialize_trade(trade)
         self.assertEqual(d["exit_price"], 120.0)
@@ -285,6 +287,7 @@ class TestSerialize(unittest.TestCase):
         self.assertEqual(d["exit_reason"], "target_price")
 
     def test_serialize_signal(self):
+        """序列化 — 策略信号转 dict"""
         sig = _make_signal()
         d = _serialize_signal(sig)
         self.assertEqual(d["stock_symbol"], "002837")
@@ -294,27 +297,33 @@ class TestSerialize(unittest.TestCase):
 
 class TestHelpers(unittest.TestCase):
     def test_strategy_label_known(self):
+        """策略名映射 — 已知策略返回中文"""
         self.assertEqual(_strategy_label("trend_follow"), "趋势延续")
         self.assertEqual(_strategy_label("macd_golden"), "MACD金叉")
         self.assertEqual(_strategy_label("momentum"), "动量策略")
         self.assertEqual(_strategy_label("market_scan"), "市场扫描")
 
     def test_strategy_label_unknown(self):
+        """策略名映射 — 未知策略原样返回"""
         self.assertEqual(_strategy_label("some_new_strategy"), "some_new_strategy")
 
     def test_stock_url_cn(self):
+        """股票链接 — 深圳股票"""
         url = stock_url("002837", "CN", platform="xueqiu")
         self.assertIn("xueqiu.com/S/SZ002837", url)
 
     def test_stock_url_cn_sh(self):
+        """股票链接 — 上海股票"""
         url = stock_url("600519", "CN", platform="xueqiu")
         self.assertIn("xueqiu.com/S/SH600519", url)
 
     def test_stock_url_us(self):
+        """股票链接 — 美股"""
         url = stock_url("AAPL", "US", platform="xueqiu")
         self.assertEqual(url, "https://xueqiu.com/S/AAPL")
 
     def test_stock_url_hk(self):
+        """股票链接 — 港股"""
         url = stock_url("00883", "HK", platform="xueqiu")
         self.assertEqual(url, "https://xueqiu.com/S/00883")
 
