@@ -68,6 +68,8 @@ interface Position {
   market_value_cny: number | null  // 人民币市值
   pnl: number | null
   pnl_pct: number | null
+  daily_pnl: number | null
+  daily_pnl_pct: number | null
   exchange_rate: number | null  // 汇率（仅港股）
 }
 
@@ -79,6 +81,7 @@ interface AccountSummary {
   total_cost: number
   total_pnl: number
   total_pnl_pct: number
+  total_daily_pnl: number
   total_assets: number
   positions: Position[]
 }
@@ -90,6 +93,7 @@ interface PortfolioSummary {
     total_cost: number
     total_pnl: number
     total_pnl_pct: number
+    total_daily_pnl: number
     available_funds: number
     total_assets: number
   }
@@ -230,10 +234,12 @@ const mergePortfolioQuotes = (
   let grandMarketValue = 0
   let grandCost = 0
   let grandAvailable = 0
+  let grandDailyPnl = 0
 
   const accounts = portfolio.accounts.map(account => {
     let accMarketValue = 0
     let accCost = 0
+    let accDailyPnl = 0
 
     const positions = account.positions.map(pos => {
       const quote = quotes[`${pos.market}:${pos.symbol}`]
@@ -248,6 +254,8 @@ const mergePortfolioQuotes = (
       let market_value_cny: number | null = null
       let pnl: number | null = null
       let pnl_pct: number | null = null
+      let daily_pnl: number | null = null
+      let daily_pnl_pct: number | null = null
 
       if (current_price != null) {
         market_value = current_price * pos.quantity
@@ -255,6 +263,15 @@ const mergePortfolioQuotes = (
         accMarketValue += market_value_cny
         pnl = market_value_cny - cost
         pnl_pct = cost > 0 ? (pnl / cost * 100) : 0
+      }
+
+      if (current_price != null && change_pct != null && change_pct !== -100) {
+        const prev = current_price / (1 + change_pct / 100)
+        if (isFinite(prev) && prev > 0) {
+          daily_pnl = round2((current_price - prev) * pos.quantity * rate)
+          daily_pnl_pct = round2(change_pct)
+          accDailyPnl += daily_pnl
+        }
       }
 
       return {
@@ -266,6 +283,8 @@ const mergePortfolioQuotes = (
         market_value_cny,
         pnl,
         pnl_pct,
+        daily_pnl,
+        daily_pnl_pct,
         exchange_rate: pos.market === 'HK' || pos.market === 'US' ? rate : null,
       }
     })
@@ -277,6 +296,7 @@ const mergePortfolioQuotes = (
     grandMarketValue += accMarketValue
     grandCost += accCost
     grandAvailable += account.available_funds
+    grandDailyPnl += accDailyPnl
 
     return {
       ...account,
@@ -284,6 +304,7 @@ const mergePortfolioQuotes = (
       total_cost: round2(accCost),
       total_pnl: round2(accPnl),
       total_pnl_pct: round2(accPnlPct),
+      total_daily_pnl: round2(accDailyPnl),
       total_assets: round2(accTotalAssets),
       positions,
     }
@@ -301,6 +322,7 @@ const mergePortfolioQuotes = (
       total_cost: round2(grandCost),
       total_pnl: round2(grandPnl),
       total_pnl_pct: round2(grandPnlPct),
+      total_daily_pnl: round2(grandDailyPnl),
       available_funds: round2(grandAvailable),
       total_assets: round2(grandTotalAssets),
     },
@@ -1633,17 +1655,9 @@ export default function StocksPage() {
           </div>
 
           {(() => {
-            let dayPnl = 0
-            let prevMv = 0
-            const allPos = (portfolio.accounts || []).flatMap(a => a.positions || [])
-            for (const p of allPos) {
-              if (p.current_price_cny == null || p.change_pct == null) continue
-              const prev = p.change_pct === -100 ? null : (p.current_price_cny / (1 + p.change_pct / 100))
-              if (prev == null || !isFinite(prev)) continue
-              const qty = p.quantity || 0
-              dayPnl += (p.current_price_cny - prev) * qty
-              prevMv += prev * qty
-            }
+            const dayPnl = portfolio.total.total_daily_pnl
+            const totalMv = portfolio.total.total_market_value
+            const prevMv = totalMv - dayPnl
             const pct = prevMv > 0 ? (dayPnl / prevMv * 100) : 0
             const isUp = dayPnl >= 0
             return (
@@ -1861,6 +1875,12 @@ export default function StocksPage() {
                         <span className="text-[10px] md:text-[11px] ml-1">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>
                       </div>
                     </div>
+                    <div className="text-left md:text-right">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">今日</div>
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium ${account.total_daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                        {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
+                      </div>
+                    </div>
                     <div className="text-left md:text-right hidden sm:block">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">可用</div>
                       <div className="text-[12px] md:text-[13px] font-mono">{formatMoney(account.available_funds)}</div>
@@ -1899,6 +1919,7 @@ export default function StocksPage() {
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">持仓</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">市值</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">盈亏</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">今日</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">风格</th>
                               <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">Agent</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">操作</th>
@@ -2000,6 +2021,14 @@ export default function StocksPage() {
                                       <div className="flex flex-col items-end">
                                         <span>{pos.pnl >= 0 ? '+' : ''}{formatMoney(pos.pnl)}</span>
                                         <span className="text-[10px] opacity-70">{pos.pnl_pct != null ? `${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%` : ''}{isForeign && ' CNY'}</span>
+                                      </div>
+                                    ) : '—'}
+                                  </td>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : ''}`}>
+                                    {pos.daily_pnl != null ? (
+                                      <div className="flex flex-col items-end">
+                                        <span>{pos.daily_pnl >= 0 ? '+' : ''}{formatMoney(pos.daily_pnl)}</span>
+                                        <span className="text-[10px] opacity-70">{pos.daily_pnl_pct != null ? `${pos.daily_pnl_pct >= 0 ? '+' : ''}${pos.daily_pnl_pct.toFixed(2)}%` : ''}</span>
                                       </div>
                                     ) : '—'}
                                   </td>
@@ -2153,9 +2182,16 @@ export default function StocksPage() {
                                   <span className="text-muted-foreground">成本 <span className="font-mono text-foreground">{formatPrice(pos.cost_price)}</span></span>
                                   <span className="text-muted-foreground">数量 <span className="font-mono text-foreground">{pos.quantity}</span></span>
                                 </div>
-                                <div className={`font-mono ${pnlColor}`}>
-                                  {pos.pnl != null ? `${pos.pnl >= 0 ? '+' : ''}${formatMoney(pos.pnl)}` : '—'}
-                                  {pos.pnl_pct != null && <span className="ml-1">({pos.pnl_pct >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}%)</span>}
+                                <div className="flex items-center gap-3">
+                                  <div className={`font-mono ${pnlColor}`}>
+                                    {pos.pnl != null ? `${pos.pnl >= 0 ? '+' : ''}${formatMoney(pos.pnl)}` : '—'}
+                                    {pos.pnl_pct != null && <span className="ml-1">({pos.pnl_pct >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}%)</span>}
+                                  </div>
+                                  {pos.daily_pnl != null && (
+                                    <div className={`font-mono ${pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                      <span className="text-muted-foreground text-[10px]">今日</span> {pos.daily_pnl >= 0 ? '+' : ''}{formatMoney(pos.daily_pnl)}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               {/* Row 3: Actions */}

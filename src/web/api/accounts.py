@@ -429,11 +429,13 @@ def get_portfolio_summary(
     grand_total_market_value = 0
     grand_total_cost = 0
     grand_available_funds = 0
+    grand_daily_pnl = 0
 
     for acc in accounts:
         positions_data = []
         acc_market_value = 0
         acc_cost = 0
+        acc_daily_pnl = 0
 
         positions_sorted = sorted(
             list(acc.positions or []),
@@ -447,6 +449,7 @@ def get_portfolio_summary(
             quote = quotes.get(stock.symbol)
             current_price = quote["current_price"] if quote else None
             change_pct = quote["change_pct"] if quote else None
+            prev_close = quote.get("prev_close") if quote else None
 
             # 根据市场确定汇率
             is_foreign = stock.market in ("HK", "US")
@@ -461,6 +464,13 @@ def get_portfolio_summary(
             market_value_cny = None
             pnl = None
             pnl_pct = None
+            daily_pnl = None
+            daily_pnl_pct = None
+
+            if current_price is not None and prev_close and prev_close > 0:
+                daily_pnl = (current_price - prev_close) * pos.quantity * rate
+                daily_pnl_pct = (current_price - prev_close) / prev_close * 100
+                acc_daily_pnl += daily_pnl
 
             cost = pos.cost_price * pos.quantity
             cost_cny = cost * rate  # 假设成本价也是原币种
@@ -492,6 +502,8 @@ def get_portfolio_summary(
                 "market_value_cny": round(market_value_cny, 2) if market_value_cny else None,
                 "pnl": round(pnl, 2) if pnl else None,
                 "pnl_pct": round(pnl_pct, 2) if pnl_pct else None,
+                "daily_pnl": round(daily_pnl, 2) if daily_pnl is not None else None,
+                "daily_pnl_pct": round(daily_pnl_pct, 2) if daily_pnl_pct is not None else None,
                 "exchange_rate": rate if is_foreign else None,
             })
 
@@ -512,6 +524,7 @@ def get_portfolio_summary(
             "total_cost": round(acc_cost, 2),
             "total_pnl": round(acc_pnl, 2),
             "total_pnl_pct": round(acc_pnl_pct, 2),
+            "total_daily_pnl": round(acc_daily_pnl, 2),
             "total_assets": round(acc_total_assets, 2),
             "positions": positions_data,
         })
@@ -519,6 +532,7 @@ def get_portfolio_summary(
         grand_total_market_value += acc_market_value
         grand_total_cost += acc_cost
         grand_available_funds += acc.available_funds
+        grand_daily_pnl += acc_daily_pnl
 
     if include_quotes:
         grand_pnl = grand_total_market_value - grand_total_cost
@@ -545,6 +559,7 @@ def get_portfolio_summary(
             "total_cost": round(grand_total_cost, 2),
             "total_pnl": round(grand_pnl, 2),
             "total_pnl_pct": round(grand_pnl_pct, 2),
+            "total_daily_pnl": round(grand_daily_pnl, 2),
             "available_funds": round(grand_available_funds, 2),
             "total_assets": round(grand_total_assets, 2),
         },
