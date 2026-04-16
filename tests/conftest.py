@@ -46,6 +46,15 @@ def _suppress_notifications(request, monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _mock_stock_link_platform(monkeypatch):
+    """避免 stock_link 模块访问数据库读取平台设置。"""
+    monkeypatch.setattr(
+        "src.core.stock_link.get_platform",
+        lambda: "xueqiu",
+    )
+
+
 # ---------------------------------------------------------------------------
 # 共用工厂 fixtures
 # ---------------------------------------------------------------------------
